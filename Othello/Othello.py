@@ -1,7 +1,9 @@
-import sys
+iimport sys
 import math
 import numpy as np
 import random
+import itertools
+
 from datetime import datetime
 
 # Auto-generated code below aims at helping you parse
@@ -66,27 +68,20 @@ def count_corners(grid, mark, config):
 
 # Helper function for listing vald moves
 def valid_moves(grid, mark, config):
-    valid_moves = []
-    for row in range(config.columns):
-        for col in range(config.columns):
-            move = row,col
-            if grid[row,col] == '.' :
-                taken = 0
-                new_grid, taken = play_piece(grid, move, mark, config)
-                if taken > 0 : 
-                    tupl = (row,col)
-                    valid_moves.append(tupl)
-    return valid_moves
+    return [move
+            for move in itertools.product(range(config.columns), range(confg.columns)) 
+            if grid[move] == '.' and play_piece(grid, move, mark, config)[1] > 0]
+   
     
 # Helper for knowing how much are taken per window
 def taken_in_move(window, mark, config):
     count = 0
     nb_taken = 0
-    for col in range(1,len(window)):
-        if window[col] == '.' : break
-        elif window[col] != str(mark) and window[col] != '.' : 
+    for win in window[1:]:
+        if win == '.' : break
+        elif win != str(mark) and win != '.' : 
             count += 1
-        elif window[col] == str(mark) : 
+        elif win == str(mark) : 
             nb_taken = count
             break     
     return nb_taken 
@@ -99,15 +94,14 @@ def play_piece(grid, move, mark, config) :
     taken_this_move = 0
     # horizontal +
     window = list(grid[y, x::])
-    if type(window) == list and len(window) > 2 :
-        if window[1] == str(1 - mark) :
-            taken = taken_in_move(window, mark, config)
-            if taken > 0:
-                next_grid[y, x:x+taken] = mark
-                taken_this_move += taken
+    if len(window) > 2 and window[1] == str(1 - mark):
+        taken = taken_in_move(window, mark, config)
+        if taken > 0:
+            next_grid[y, x:x+taken] = mark
+            taken_this_move += taken
     # horizontal -  
     window = list(grid[y, x::-1])
-    if type(window) == list and len(window) > 2 :
+    if len(window) > 2 :
         if window[1] == str(1 - mark) :
             taken = taken_in_move(window, mark, config)
             if taken > 0:
@@ -243,4 +237,3 @@ while True:
 
     # a-h1-8
     print(order)
-
