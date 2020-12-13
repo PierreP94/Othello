@@ -1,7 +1,8 @@
 import sys
-import math
 import numpy as np
 import random
+import itertools
+
 from datetime import datetime
 
 # Auto-generated code below aims at helping you parse
@@ -9,238 +10,308 @@ from datetime import datetime
 
 _id = int(input())  # id of your player.
 board_size = int(input())
-class obs :
+
+
+class Obs:
     board = []
+    """Id of player."""
     mark = _id
 
-class config :
-    columns = board_size
+
+class Config:
+    size = board_size - 1
+
 
 # Calculates score if agent drops piece in selected column
-def score_move(grid, move, mark, config, nsteps):
-    next_grid, taken = play_piece(grid, move, mark, config)
-    score = minimax(next_grid, nsteps-1, False, mark, config)
+def score_move(grid, move, mark, nsteps):
+    next_grid, taken = play_piece(grid, move, mark)
+    score = alpha_beta(next_grid, nsteps - 1, mark, -np.Inf, np.Inf)
     return score
 
-def is_terminal_node(grid, config):
+
+def is_terminal_node(grid):
     return np.sum(grid == '.') == 0
 
-def minimax(node, depth, maximizingPlayer, mark, config):
-    is_terminal = is_terminal_node(node, config)
-    if depth == 0 or is_terminal:
-        value = get_heuristic(node, mark, config) 
-    elif maximizingPlayer:
-        v_moves = valid_moves(node, mark, config)
-        value = -np.Inf
-        for move in v_moves:
-            child, child_taken = play_piece(node, move, mark, config)
-            value = max(value, minimax(child, depth-1, False, mark, config))
-            print(v_moves, file=sys.stderr, flush=True) 
+
+def diag_bound(move):
+    """Allow to get boundaries for diagonals following position"""
+    x = move[1]
+    y = move[0]
+    if y + x <= Config.size:
+        boundary_ur = x + y
+        boundary_dl = x + y
+        if x - y >= 0:
+            """top part"""
+            boundary_ul = x - y
+            boundary_dr = Config.size - x + y
+            boundaries = [[boundary_dr, Config.size],
+                          [boundary_dl, 0],
+                          [0, boundary_ur],
+                          [0, boundary_ul]]
+        else:
+            """left part"""
+            boundary_ul = y - x
+            boundary_dr = Config.size - y + x
+            boundaries = [[Config.size, boundary_dr],
+                          [boundary_dl, 0],
+                          [0, boundary_ur],
+                          [boundary_ul, 0]]
     else:
-        op_v_moves = valid_moves(node, 1-mark, config)
-        value = np.Inf
-        for move in op_v_moves:
-            child, child_taken = play_piece(node, move, 1-mark, config)
-            value = min(value, minimax(child, depth-1, True, mark, config))
+        boundary_ur = x + y - Config.size
+        boundary_dl = x + y - Config.size
+        if x - y >= 0:
+            """right part"""
+            boundary_ul = x - y
+            boundary_dr = Config.size - x + y
+            boundaries = [[boundary_dr, Config.size],
+                          [Config.size, boundary_dl],
+                          [boundary_ur, Config.size],
+                          [0, boundary_ul]]
+        else:
+            """down part"""
+            boundary_ul = y - x
+            boundary_dr = Config.size - y + x
+            boundaries = [[Config.size, boundary_dr],
+                          [Config.size, boundary_dl],
+                          [boundary_ur, Config.size],
+                          [boundary_ul, 0]]
+    return boundaries
+
+
+def alpha_beta(node, depth, mark, alpha, beta):
+    is_terminal = is_terminal_node(node)
+    if depth == 0 or is_terminal:
+        value = get_heuristic(node, mark)
+    else:
+        value = -np.Inf
+        for move in valid_moves(grid, mark):
+            child, child_taken = play_piece(node, move, mark)
+            value = max(value, alpha_beta(child, depth - 1, 1 - mark, - alpha,
+                        - beta))
+            alpha = max(alpha, value)
+            if alpha >= beta:
+                break
+    print("alpha: ", file=sys.stderr, flush=True)
+    print(alpha, file=sys.stderr, flush=True)
+    print("beta: ", file=sys.stderr, flush=True)
+    print(beta, file=sys.stderr, flush=True)
     return value
 
+
 # Calculates number of pieces in borders
-def count_borders(grid, mark, config):
-    up = grid[0,1:-1]
-    down = grid[config.columns-1,1:]
-    left = grid[1:-1,0]
-    right = grid[1:-1,config.columns-1]
+def count_borders(grid, mark):
+    up = grid[0, 1:-1]
+    down = grid[Config.size, 1:-1]
+    left = grid[1:-1, 0]
+    right = grid[1:-1, Config.size]
     borders = np.concatenate((up, down, left, right))
     count = np.sum(borders == str(mark))
     return count
 
+
+def count_bef_borders(grid, mark):
+    """Calculate number of pieces in the line before borders"""
+    up = grid[1, 2:-2]
+    down = grid[Config.size - 1, 2:-2]
+    left = grid[2:-2, 1]
+    right = grid[2:-2, Config.size - 1]
+    bef_borders = np.array(list(up) + list(down) + list(left) + list(right))
+    count = np.sum(bef_borders == str(mark))
+    """print("bef_borders: ", file=sys.stderr, flush=True)
+
+    print(bef_borders, file=sys.stderr, flush=True)
+    """
+
+    return count
+
+
+def count_bef_corners(grid, mark):
+    """Calculate number of pieces before corners"""
+    win = list()
+    if grid[0, 0] == '.':
+        if str(1-mark) in grid[0, 2:] or '.' in grid[0, 2:]:
+            win.append(grid[0, 1])
+        if str(1-mark) in grid[2:, 0] or '.' in grid[2:, 0]:
+            win.append(grid[1, 0])
+        win.append(grid[1, 1])
+    if grid[0, -1] == '.':
+        if str(1-mark) in grid[0, :-2] or '.' in grid[0, :-2]:
+            win.append(grid[0, -2])
+        if str(1-mark) in grid[2:, -1] or '.' in grid[2:, -1]:
+            win.append(grid[1, -1])
+        win.append(grid[1, -2])
+    if grid[-1, 0] == '.':
+        if str(1-mark) in grid[-1, 2:] or '.' in grid[-1, 2:]:
+            win.append(grid[-1, 1])
+        if str(1-mark) in grid[:-2, 0] or '.' in grid[:-2, 0]:
+            win.append(grid[0, -2])
+        win.append(grid[-2, 1])
+    if grid[-1, -1] == '.':
+        if str(1-mark) in grid[-1, :-2] or '.' in grid[-1, :-2]:
+            win.append(grid[-1, -2])
+        if str(1-mark) in grid[:-2, -1] or '.' in grid[:-2, -1]:
+            win.append(grid[-2, -1])
+        win.append(grid[-2, -2])
+    count = np.sum(win == str(mark))
+    return count
+
+
 # Calculates number of pieces in corners
-def count_corners(grid, mark, config):
-    up_left = grid[0,0]
-    up_right = grid[0,-1]
-    down_left = grid[-1,0]
-    down_right = grid[-1,-1]
+def count_corners(grid, mark):
+    up_left = grid[0, 0]
+    up_right = grid[0, Config.size]
+    down_left = grid[Config.size, 0]
+    down_right = grid[Config.size, Config.size]
     corners = np.array([up_left, down_left, up_right, down_right])
     count = np.sum(corners == str(mark))
     return count
 
+
 # Helper function for listing vald moves
-def valid_moves(grid, mark, config):
-    valid_moves = []
-    for row in range(config.columns):
-        for col in range(config.columns):
-            move = row,col
-            if grid[row,col] == '.' :
-                taken = 0
-                new_grid, taken = play_piece(grid, move, mark, config)
-                if taken > 0 : 
-                    tupl = (row,col)
-                    valid_moves.append(tupl)
-    return valid_moves
-    
+def valid_moves(grid, mark):
+    return [move for move in itertools.product(range(Config.size + 1),
+                                               range(Config.size + 1))
+            if grid[move] == '.' and play_piece(grid, move, mark)[1] > 0]
+
+
 # Helper for knowing how much are taken per window
-def taken_in_move(window, mark, config):
+def taken_in_move(window, mark):
     count = 0
     nb_taken = 0
-    for col in range(1,len(window)):
-        if window[col] == '.' : break
-        elif window[col] != str(mark) and window[col] != '.' : 
+    for win in window[1:]:
+        if win == '.':
+            break
+        elif win != str(mark) and win != '.':
             count += 1
-        elif window[col] == str(mark) : 
+        elif win == str(mark):
             nb_taken = count
-            break     
-    return nb_taken 
+            break
+    return nb_taken
+
 
 # Helper for knowing result of a move
-def play_piece(grid, move, mark, config) :
-    x = move[1] 
+def play_piece(grid, move, mark):
+    x = move[1]
     y = move[0]
     next_grid = grid.copy()
     taken_this_move = 0
-    # horizontal +
-    window = list(grid[y, x::])
-    if type(window) == list and len(window) > 2 :
-        if window[1] == str(1 - mark) :
-            taken = taken_in_move(window, mark, config)
-            if taken > 0:
-                next_grid[y, x:x+taken] = mark
-                taken_this_move += taken
-    # horizontal -  
-    window = list(grid[y, x::-1])
-    if type(window) == list and len(window) > 2 :
-        if window[1] == str(1 - mark) :
-            taken = taken_in_move(window, mark, config)
-            if taken > 0:
-                next_grid[y, x:x-taken:-1] = mark
-                taken_this_move += taken
-    # vertical +
-    window = list(grid[y::, x]) 
-    if type(window) == list and len(window) > 2 :
-        if window[1] == str(1 - mark) :
-            taken = taken_in_move(window, mark, config)
-            if taken > 0:
-                next_grid[y:y+taken,x] = mark
-                taken_this_move += taken
-    # vertical -
-    window = list(grid[y::-1,x ])
-    if type(window) == list and len(window) > 2 :
-        if window[1] == str(1 - mark):
-            taken = taken_in_move(window, mark, config)
-            if taken > 0: 
-                next_grid[y:y-taken+1:-1,x] = mark
-                taken_this_move += taken
-    # diagonal up right
-    window = list(np.flipud(grid[:y+1, x:]).diagonal())
-    if type(window) == list and len(window) > 2 :
-        if window[1] == str(1 - mark) :
-            taken = taken_in_move(window, mark, config)
-            if taken > 0:
-                for row in range(x,x+taken+1) :
-                    next_grid[y-row+x,row ] = mark
-                taken_this_move += taken
-    # diagonal down right
-    window = list(grid[y:, x:].diagonal())
-    if type(window) == list and len(window) > 2 :
-        if window[1] == str(1 - mark) :
-            taken = taken_in_move(window, mark, config)
-            if taken > 0: 
-                for row in range(x,x+taken+1) :
-                    next_grid[y+row-x, row ] = mark
-                taken_this_move += taken
-    # diagonal up left
-    window = list(grid[y::-1,x::-1].diagonal())
-    if type(window) == list and len(window) > 2 :
-        if window[1] == str(1 - mark) :
-            taken = taken_in_move(window, mark, config)
-            if taken > 0: 
-                for row in range(x,x-taken-1, -1) :
-                    next_grid[y+row-x, row ] = mark
-                taken_this_move += taken
-    # diagonal down left
-    window = list(np.fliplr(grid[y::, :x+1]).diagonal())
-    if type(window) == list and len(window) > 2 :
-        if window[1] == str(1 - mark) :
-            taken = taken_in_move(window, mark, config)
-            if taken > 0 :
-                for row in range(x,x-taken-1, -1) :
-                    next_grid[y-row+x, row ] = mark
-                taken_this_move += taken   
+    if grid[x, y] == '.':
+        next_grid[y, x] = mark
+        # horizontal +
+        for a in [1, -1]:
+            win_hor = grid[y, x::a]
+            win_ver = grid[y::a, x]
+            if len(win_hor) > 2 and win_hor[1] == str(1 - mark):
+                taken = taken_in_move(win_hor, mark)
+                if taken > 0:
+                    next_grid[y, x:x + a * taken] = mark
+                    taken_this_move += taken
+            if len(win_ver) > 2 and win_ver[1] == str(1 - mark):
+                taken = taken_in_move(win_ver, mark)
+                if taken > 0:
+                    next_grid[y:y + a * taken, x] = mark
+                    taken_this_move += taken
+        # diagonals
+        boundaries = diag_bound(move)
+        for (a, b), (bound_row, bound_col) in zip(itertools.product([1, -1], [1, -1]), boundaries):
+            diag = np.array([[row for row in range(y, bound_row + a, a)],
+                             [col for col in range(x, bound_col + b, b)]])
+            window = grid[tuple(diag)]
+            if len(window) > 2 and window[1] == str(1 - mark):
+                taken = taken_in_move(window, mark)
+                if taken > 0:
+                    next_grid[tuple(diag[:, :taken + 1])] = mark
+                    taken_this_move += taken
     return next_grid, taken_this_move
 
+
 # Helper function for score_move: calculates value of heuristic for grid
-def get_heuristic(grid, mark, config):
-    corners = count_corners(grid, mark, config)
-    borders = count_borders(grid, mark, config)
-    op_cant_play = not bool(valid_moves(grid, 1-mark, config))
-    op_corners = count_corners(grid, 1-mark, config)
-    op_borders = count_borders(grid, 1-mark, config)
-    cant_play = not bool(valid_moves(grid, mark, config))
-    score = (grid == "mark").sum() + 10*(borders-op_borders) + 100*(corners-op_corners) + 1000*(cant_play - op_cant_play)
+def get_heuristic(grid, mark):
+    op = 1 - mark
+    corners = count_corners(grid, mark)
+    borders = count_borders(grid, mark)
+    bef_borders = count_bef_borders(grid, mark)
+    bef_corners = count_bef_corners(grid, mark)
+    cant_play = not bool(valid_moves(grid, mark))
+    op_bef_borders = count_bef_borders(grid, op)
+    op_bef_corners = count_bef_corners(grid, op)
+    op_cant_play = not bool(valid_moves(grid, op))
+    op_corners = count_corners(grid, op)
+    op_borders = count_borders(grid, op)
+    score = ((grid == "mark").sum() - (grid == str(1 - mark)).sum()
+             + 10 * op_bef_borders
+             - 1000 * bef_borders
+             + 100000 * borders
+             - 5000 * op_borders
+             + 500000 * op_bef_corners
+             - 10000000 * bef_corners
+             + 1000000000 * corners
+             - 1000000000 * op_corners
+             + 100000000000 * op_cant_play
+             - 10000000000 * cant_play)
     return score
 
-def convert_move(move) :
-    y = move[0] + 1
-    x = move[1] 
-    order = ""
-    if x == 0 : order = "a"+str(y)
-    if x == 1 : order = "b"+str(y)
-    if x == 2 : order = "c"+str(y)
-    if x == 3 : order = "d"+str(y)
-    if x == 4 : order = "e"+str(y)
-    if x == 5 : order = "f"+str(y)
-    if x == 6 : order = "g"+str(y)
-    if x == 7 : order = "h"+str(y)
-    return order
 
-N_STEPS = 2
-def agent(obs, config):
+def convert_move(move):
+    y = move[0] + 1
+    x = move[1]
+    return "abcdefgh"[x] + str(y)
+
+
+def agent(obs):
     # Convert the board to a 2D grid ()
     # Get list of valid moves
-    v_moves = valid_moves(grid, obs.mark, config)
-    print("v_moves: ", file=sys.stderr, flush=True) 
-    print(v_moves, file=sys.stderr, flush=True) 
-
-    # Use the heuristic to assign a score to each possible board in the next turn
-    scores = dict(zip(v_moves, [score_move(grid, move, obs.mark, config, N_STEPS) for move in v_moves]))
+    v_moves = valid_moves(grid, obs.mark)
+    print("v_moves: ", file=sys.stderr, flush=True)
+    print(v_moves, file=sys.stderr, flush=True)
+    n_steps = 4
+    """ Use the heuristic to assign a score
+     to each possible board in the next turn """
+    scores = dict(zip(v_moves, [score_move(grid, move, obs.mark, n_steps)
+                                for move in v_moves]))
     # Get a list of columns (moves) that maximize the heuristic
-    print("scores: ", file=sys.stderr, flush=True) 
-    print(scores, file=sys.stderr, flush=True) 
-        
+    print("scores: ", file=sys.stderr, flush=True)
+    print(scores, file=sys.stderr, flush=True)
+    print(max(scores.values()), file=sys.stderr, flush=True)
+
     max_moves = [key for key in scores.keys() if scores[key] == max(scores.values())]
     # Select at random from the maximizing columns
-    print("max_moves :", file=sys.stderr, flush=True) 
+    print("max_moves :", file=sys.stderr, flush=True)
 
-    print(max_moves, file=sys.stderr, flush=True) 
+    print(max_moves, file=sys.stderr, flush=True)
 
     return random.choice(max_moves)
 
+
+# def main():
 # game loop
 while True:
-    obs.board = []
+    Obs.board = []
     for i in range(board_size):
         line = input()  # rows from top to bottom (viewer perspective).
-        obs.board.extend(line)            
+        Obs.board.extend(line)
     action_count = int(input())  # number of legal actions for this turn.
-    grid = np.asarray(obs.board).reshape(config.columns, config.columns)
-
+    grid = np.asarray(Obs.board).reshape(Config.size + 1, Config.size + 1)
+    print(grid, file=sys.stderr, flush=True)
 
     for i in range(action_count):
         action = input()  # the action
-    print(np.sum(grid == '.'), file=sys.stderr, flush=True) 
-
     temps1 = datetime.now()
-    move_to_play = agent(obs, config)
-    order = convert_move(move_to_play)
-    print(move_to_play, file=sys.stderr, flush=True)
-    temps2 = datetime.now()
-    delay = temps2 - temps1
-    print(delay, file=sys.stderr, flush=True)
+    if action_count > 0:
+        move_to_play = agent(Obs)
+        order = convert_move(move_to_play)
+        print(move_to_play, file=sys.stderr, flush=True)
+        temps2 = datetime.now()
+        delay = temps2 - temps1
+        print("delay : " + str(delay), file=sys.stderr, flush=True)
 
+        # Write an action using print
+        # To debug: print("Debug messages...", file=sys.stderr, flush=True)
 
-    # Write an action using print
-    # To debug: print("Debug messages...", file=sys.stderr, flush=True) 
+        # a-h1-8
+        print(order)
 
+# if __name__ == '__main__':
+#    main()
 
-    # a-h1-8
-    print(order)
 
