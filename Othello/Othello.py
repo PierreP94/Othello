@@ -44,7 +44,7 @@ def diag_bound(move):
             """top part"""
             boundary_ul = x - y
             boundary_dr = Config.size - x + y
-            boundaries = [[boundary_dr, Config.size],
+            boundaries = [[boundary_dr, -1],
                           [boundary_dl, 0],
                           [0, boundary_ur],
                           [0, boundary_ul]]
@@ -52,7 +52,7 @@ def diag_bound(move):
             """left part"""
             boundary_ul = y - x
             boundary_dr = Config.size - y + x
-            boundaries = [[Config.size, boundary_dr],
+            boundaries = [[-1, boundary_dr],
                           [boundary_dl, 0],
                           [0, boundary_ur],
                           [boundary_ul, 0]]
@@ -63,17 +63,17 @@ def diag_bound(move):
             """right part"""
             boundary_ul = x - y
             boundary_dr = Config.size - x + y
-            boundaries = [[boundary_dr, Config.size],
-                          [Config.size, boundary_dl],
-                          [boundary_ur, Config.size],
+            boundaries = [[boundary_dr, -1],
+                          [-1, boundary_dl],
+                          [boundary_ur, -1],
                           [0, boundary_ul]]
         else:
             """down part"""
             boundary_ul = y - x
             boundary_dr = Config.size - y + x
-            boundaries = [[Config.size, boundary_dr],
-                          [Config.size, boundary_dl],
-                          [boundary_ur, Config.size],
+            boundaries = [[-1, boundary_dr],
+                          [-1, boundary_dl],
+                          [boundary_ur, -1],
                           [boundary_ul, 0]]
     return boundaries
 
