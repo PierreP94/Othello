@@ -22,14 +22,79 @@ class Config:
     size = board_size - 1
 
 
+def ordering_moves(v_moves):
+    ordered_moves = []
+    corners = [(0, 0), (0, Config.size), (Config.size, 0),
+               (Config.size, Config.size)]
+    v_moves.sort()
+    for move in v_moves:
+        if move in corners:
+            ordered_moves.append(move)
+    for move in v_moves:
+        if move not in ordered_moves and (0 in move or Config.size in move):
+            ordered_moves.append(move)
+    for move in v_moves:
+        if move not in ordered_moves:
+            ordered_moves.append(move)
+    return ordered_moves
+
+
+def deepness(valid_moves, grid):
+    length = len(valid_moves)
+    if length > 7:
+        n_steps = 1
+    elif np.sum(grid == '.') < 48:
+        if length == 5:
+            n_steps = 3
+        elif length == 4:
+            n_steps = 3
+        elif length == 3:
+            n_steps = 4
+        elif length == 2:
+            n_steps = 5
+        else:
+            n_steps = 2
+    else:
+        n_steps = 2
+    return n_steps
+
+
 # Calculates score if agent drops piece in selected column
 def score_move(grid, move, mark, nsteps):
+    global node_count
+    node_count = 0
     alpha = -np.Inf
-    beta = np.Inf  
+    beta = np.Inf
     next_grid = play_piece(grid, move, mark)[0]
-
-    score = alpha_beta_nega(next_grid, nsteps - 1, mark, False, alpha, beta)
+    score = alpha_beta_nega(next_grid, nsteps - 1, mark, False,alpha, beta)
     return score
+
+
+def alpha_beta_nega(node, depth, mark, maximizing, alpha, beta):
+
+    if depth == 0 or is_terminal_node(node):
+        value = get_heuristic(node, mark)
+        return value
+    elif maximizing:
+        alpha_node = -np.Inf
+        for move in valid_moves(node, mark):
+            child = play_piece(node, move, mark)[0]
+            value = alpha_beta_nega(child, depth - 1, mark, False, alpha, beta)
+            alpha_node = max(alpha_node, value)
+            alpha = max(alpha, alpha_node)
+            if alpha >= beta:
+                break
+        return alpha
+    else:
+        beta_node = np.Inf
+        for move in valid_moves(node, 1-mark):
+            child = play_piece(node, move, 1-mark)[0]
+            value = alpha_beta_nega(child, depth - 1, mark, True, alpha, beta)
+            beta_node = min(beta_node, value)
+            beta = min(beta, beta_node)
+            if alpha >= beta:
+                break
+        return beta
 
 
 def is_terminal_node(grid):
@@ -81,35 +146,6 @@ def diag_bound(move):
     return boundaries
 
 
-def alpha_beta_nega(node, depth, mark, maximizing, alpha, beta):
-
-    if depth == 0 or is_terminal_node(node):
-        value = get_heuristic(node, mark)
-        return value
-    elif maximizing:
-        alpha_node = -np.Inf
-        for move in valid_moves(node, mark):
-            child = play_piece(node, move, mark)[0]
-            value = alpha_beta_nega(child, depth - 1, mark, False, alpha, beta)
-            alpha_node = max(alpha_node, value)
-            alpha = max(alpha, alpha_node)
-            if alpha >= beta:
-                break
-        return alpha
-    else:
-        beta_node = np.Inf
-        for move in valid_moves(node, 1-mark):
-            child = play_piece(node, move, 1-mark)[0]
-            value = alpha_beta_nega(child, depth - 1, mark, True, alpha, beta)
-            beta_node = min(beta_node, value)
-            beta = min(beta, beta_node)
-
-            if alpha >= beta:
-                break
-
-        return beta
-
-
 # Calculates number of pieces in borders
 def count_borders(grid, mark):
     up = grid[0, 1:-1]
@@ -124,14 +160,11 @@ def count_borders(grid, mark):
 def count_bef_borders(grid, mark):
     """Calculate number of pieces in the line before borders"""
     win = np.array([])
-    if '.' in grid[0, 2:-2]:
-        win = np.append(win, grid[1, 2:-2])
-    if '.' in grid[-1, 2:-2]:
-        win = np.append(win, grid[-2, 2:-2])
-    if '.' in grid[2:-2, 0]:
-        win = np.append(win, grid[2:-2, 1])
-    if '.' in grid[2:-2, -1]:
-        win = np.append(win, grid[2:-2, -2])
+    for a, b in itertools.product([0,-1], range(2, 6)):
+        if '.' in grid[b-1:b+2, a]:
+            win = np.append(win, grid[b, a*3+1])
+        if '.' in grid[a, b-1:b+2]:
+            win = np.append(win, grid[a*3+1, b])
     return np.sum(win == str(mark))
 
 
@@ -155,7 +188,7 @@ def count_bef_corners(grid, mark):
         if str(op) in grid[-1, 2:] or '.' in grid[-1, 2:]:
             win = np.append(win, grid[-1, 1])
         if str(op) in grid[:-2, 0] or '.' in grid[:-2, 0]:
-            win = np.append(win, grid[0, -2])
+            win = np.append(win, grid[-2, 0])
         win = np.append(win, grid[-2, 1])
     if grid[-1, -1] == '.':
         if str(op) in grid[-1, :-2] or '.' in grid[-1, :-2]:
@@ -166,21 +199,29 @@ def count_bef_corners(grid, mark):
     return np.sum(win == str(mark))
 
 
-# Calculates number of pieces in corners
-def count_corners(grid, mark):
-    up_left = grid[0, 0]
-    up_right = grid[0, Config.size]
-    down_left = grid[Config.size, 0]
-    down_right = grid[Config.size, Config.size]
-    corners = np.array([up_left, down_left, up_right, down_right])
-    return np.sum(corners == str(mark))
+def count_untakable_set(grid, mark):
+    counted = []
+    for (a, b), (step_row, step_col) in zip(itertools.product([0, -1],
+                                            repeat=2),
+                                            itertools.product([1, -1],
+                                            repeat=2)):
+        if grid[a, b] == 'mark' and abs(row) <= Config.size:
+            col = a
+            while grid[row, col] == 'mark':
+                row = b
+                while grid[row, col] == 'mark' and abs(col) <= Config.size:
+                    if tuple(row, col) not in counted:
+                        counted.append(tuple(row, col))
+                    row += step_row
+                col += step_col
+    return len(counted)
 
 
 # Helper function for listing valid moves
 def valid_moves(grid, mark):
-    return [move for move in itertools.product(range(Config.size + 1),
+    return ordering_moves([move for move in itertools.product(range(Config.size + 1),
                                                range(Config.size + 1))
-            if grid[move] == '.' and play_piece(grid, move, mark)[1] > 0]
+            if grid[move] == '.' and play_piece(grid, move, mark)[1] > 0])
 
 
 # Helper for knowing how much are taken per window
@@ -214,13 +255,11 @@ def play_piece(grid, move, mark):
             if taken > 0:
                 next_grid[y, x:x + a * (taken+1):a] = mark
                 taken_this_move += taken
-
         if len(win_ver) > 2 and win_ver[1] == str(1 - mark):
             taken = taken_in_move(win_ver, mark)
             if taken > 0:
                 next_grid[y:y + a * (taken+1):a, x] = mark
                 taken_this_move += taken
-
     # diagonals
     boundaries = diag_bound(move)
     for (a, b), (bound_row, bound_col) in zip(itertools.product([1, -1],
@@ -239,15 +278,15 @@ def play_piece(grid, move, mark):
 # Helper function for score_move: calculates value of heuristic for grid
 def get_heuristic(grid, mark):
     list_grid = grid.ravel()
-    corners = count_corners(grid, mark)
+    untakable_set = count_untakable_set(grid, mark)
     borders = count_borders(grid, mark)
     bef_borders = count_bef_borders(grid, mark)
     bef_corners = count_bef_corners(grid, mark)
     score = (np.sum(list_grid == str(mark))
              - 100 * bef_borders
              + 1000 * borders
-             - 100000 * bef_corners
-             + 10000000 * corners)
+             - 10000 * bef_corners
+             + 1000000 * untakable_set)
     return score
 
 
@@ -264,12 +303,8 @@ def agent(obs):
     print("v_moves: ", file=sys.stderr, flush=True)
     print(v_moves, file=sys.stderr, flush=True)
 
-    if len(v_moves) == 4:
-        n_steps = 3
-    elif len(v_moves) <= 3:
-        n_steps = 4
-    else:
-        n_steps = 2
+    n_steps = deepness(v_moves, grid)
+
     """ Use the heuristic to assign a score
      to each possible board in the next turn """
     scores = dict(zip(v_moves, [score_move(grid, move, obs.mark, n_steps)
